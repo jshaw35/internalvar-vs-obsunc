@@ -51,7 +51,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn import metrics
 from sklearn.metrics import mean_squared_error, r2_score
 
-from collections import Iterable
+#from collections import Iterable
 from collections import deque
 #import pyaerocom as pya
 
