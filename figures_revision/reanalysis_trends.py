@@ -198,6 +198,9 @@ fig.suptitle('Temperature Trends 1980-2020 by Data Source', fontsize=16, y=0.93)
 
  # %%
 # Save the figure
-to_png(fig, 'fig_revision_datasource_trendcomparison', dpi=200, ext="pdf", bbox_inches='tight')
+to_png(fig, 'fig_revision_datasource_trendcomparison', dpi=100, ext="pdf", bbox_inches='tight')
+
+# %%
+to_png(fig, 'fig_revision_datasource_trendcomparison', dpi=200, ext="png", bbox_inches='tight')
 
 # %%
