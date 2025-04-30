@@ -99,6 +99,7 @@ hadcrut5_ds = hadcrut5_ens_ds.median('realization').compute().assign_coords({"so
 
 # %%
 
+# Combine data since 1980 for all sources
 data_list = [gistemp_ds, hadcrut5_ds, best_ds, era5_ds, merra2_ds]
 var_list = ["tas", "tas", "temperature", "t2m", "T2M"]
 source_list = ["GISTEMP", "HadCRUT", "BEST", "ERA5", "MERRA2"]
@@ -114,18 +115,38 @@ for _data, _source, _tas_var in zip(data_list, source_list, var_list):
 
 all_sources_ds = xr.combine_by_coords(combine_list)
 all_sources_annual_ds = all_sources_ds.groupby('time.year').mean('time')
-# all_sources_annual_ds = all_sources_ds.resample(time='1Y').mean()
+
+# Combine data since 1940 for all sources minus MERRA2
+data_list = [gistemp_ds, hadcrut5_ds, best_ds, era5_ds]  # Exclude MERRA2 for this part
+var_list = ["tas", "tas", "temperature", "t2m"]
+source_list = ["GISTEMP", "HadCRUT", "BEST", "ERA5"]
+combine_list = []
+time_coord = gistemp_ds["time"].sel(time=slice("1940", "2020"))
+for _data, _source, _tas_var in zip(data_list, source_list, var_list):
+    _data = _data.sel(time=slice("1940", "2020"))
+    _data['time'] = time_coord
+    _data = _data.rename_vars({_tas_var:"tas"})
+    # _data = _data.assign_coords({"source_id":_source})
+    # _data['time'] = _data.indexes['time'].to_datetimeindex()
+    combine_list.append(_data)
+
+all_sources1940_ds = xr.combine_by_coords(combine_list)
+all_sources1940_annual_ds = all_sources1940_ds.groupby('time.year').mean('time')
 
 # %%
 
 all_sources_trend = all_sources_annual_ds.polyfit(dim='year', deg=1)
 trends_ds = all_sources_trend["tas_polyfit_coefficients"].sel(degree=1).drop("degree").compute()
 
+all_sources1940_trend = all_sources1940_annual_ds.polyfit(dim='year', deg=1)
+trends1940_ds = all_sources1940_trend["tas_polyfit_coefficients"].sel(degree=1).drop("degree").compute()
+
 # %%
 
 # send data to lon-lat space
 region_mask = regionmask.defined_regions.ar6.land
 all_sources_gridded_ds = project_IPCCregions_tolatlon(trends_ds, region_mask)
+all_sources1940_gridded_ds = project_IPCCregions_tolatlon(trends1940_ds, region_mask)
 
 # %%
 
@@ -133,7 +154,7 @@ all_sources_gridded_ds = project_IPCCregions_tolatlon(trends_ds, region_mask)
 fig, axs = plt.subplots(
     3, 2,
     figsize=(12, 11), 
-    subplot_kw={'projection': ccrs.PlateCarree()},
+    subplot_kw={'projection': ccrs.Robinson()},
     # constrained_layout=True,
 )
 # fig.subplots_adjust(hspace=0.3, wspace=0.1)
@@ -158,21 +179,15 @@ for i, source_id in enumerate(sources):
     da = all_sources_gridded_ds.sel(source_id=source_id)
     
     # Plot the data
-    # im = da.plot(ax=ax, cmap='RdBu_r', vmin=-vext, vmax=vext, 
-    #            add_colorbar=False)
     im = ax.pcolormesh(
         da.lon,
         da.lat,
         da,
-        # ax=ax,
         cmap='RdBu_r',
         vmin=-vext,
         vmax=vext,
         transform=ccrs.PlateCarree(),
-        # add_colorbar=False,
     )
-    # break
-    # continue
 
     # Add geographic features
     ax.coastlines()
@@ -181,9 +196,9 @@ for i, source_id in enumerate(sources):
     # ax.set_extent([-180, 180, -90, 90], crs=ccrs.PlateCarree())
     
     # Set title
-    ax.set_title(source_labels[i])
+    ax.set_title(source_labels[i], fontsize=16)
     
-    ax.text(-0.07, 0.90, f"{subplot_labels[i]}.", transform=ax.transAxes, size=16)
+    ax.text(-0.07, 0.92, f"{subplot_labels[i]}.", transform=ax.transAxes, size=16, weight="bold")
 
 # Remove any unused panel
 if len(all_sources_gridded_ds.source_id) < len(axs):
@@ -196,11 +211,74 @@ cbar.set_label('Temperature Trend (K/year)')
 
 fig.suptitle('Temperature Trends 1980-2020 by Data Source', fontsize=16, y=0.93)
 
- # %%
+# %%
 # Save the figure
 to_png(fig, 'fig_revision_datasource_trendcomparison', dpi=100, ext="pdf", bbox_inches='tight')
 
 # %%
+# Higher resolution and less memory with png.
 to_png(fig, 'fig_revision_datasource_trendcomparison', dpi=200, ext="png", bbox_inches='tight')
+
+# %%
+
+# Do 4-panel plot with just ERA5 and trends starting in 1940.
+# Create a figure with 5 panels for the different sources
+fig, axs = plt.subplots(
+    2, 2,
+    figsize=(12, 7.5), 
+    subplot_kw={'projection': ccrs.Robinson()},
+    # constrained_layout=True,
+)
+# fig.subplots_adjust(hspace=0.3, wspace=0.1)
+
+# Flatten the axes for easier indexing
+axs = axs.flat
+
+# Calculate min and max for consistent colorbar
+vmin = float(all_sources1940_gridded_ds.min())
+vmax = float(all_sources1940_gridded_ds.max())
+vext = max(abs(vmin), abs(vmax))  # For symmetric colorbar around zero
+
+# Plot each source
+sources = ["GISTEMP_MEDIAN", "HadCRUT_MEDIAN", "BEST", "ERA5"]
+source_labels = ["GISTEMP (median)", "HadCRUT (median)", "BEST", "ERA5"]
+subplot_labels = ["a", "b", "c", "d", "e"]
+
+for i, source_id in enumerate(sources):
+    ax = axs[i]
+    
+    # Get data for this source
+    da = all_sources1940_gridded_ds.sel(source_id=source_id)
+    
+    # Plot the data
+    im = ax.pcolormesh(
+        da.lon,
+        da.lat,
+        da,
+        cmap='RdBu_r',
+        vmin=-vext,
+        vmax=vext,
+        transform=ccrs.PlateCarree(),
+    )
+
+    # Add geographic features
+    ax.coastlines()
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    # ax.set_extent([-180, 180, -90, 90], crs=ccrs.PlateCarree())
+    
+    # Set title
+    ax.set_title(source_labels[i], fontsize=16)
+    
+    ax.text(-0.07, 0.92, f"{subplot_labels[i]}.", transform=ax.transAxes, size=16, weight="bold")
+
+# Add a colorbar
+cbar_ax = fig.add_axes([0.15, 0.08, 0.7, 0.015])
+cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
+cbar.set_label('Temperature Trend (K/year)')
+
+# fig.suptitle('Temperature Trends 1940-2020 by Data Source', fontsize=16, y=0.95)
+
+to_png(fig, 'fig_revision_datasource_trendcomparison_since1940', dpi=200, ext="png", bbox_inches='tight')
 
 # %%
